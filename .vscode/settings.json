@@ -1,0 +1,5 @@
+{
+    // "cursor.cpp.disabledLanguages": ["python", "jupyter"],
+    "editor.inlineSuggest.enabled": false,
+    "python.defaultInterpreterPath": "/Users/galgantar/miniconda3/envs/ada/bin/python"
+}
