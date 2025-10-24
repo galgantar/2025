@@ -1,5 +1,6 @@
+// For changes to take effect: Cmd + Shift + P, then "Developer: Reload Window"
 {
-    // "cursor.cpp.disabledLanguages": ["python", "jupyter"],
     "editor.inlineSuggest.enabled": false,
-    "python.defaultInterpreterPath": "/Users/galgantar/miniconda3/envs/ada/bin/python"
+    "python.defaultInterpreterPath": "/Users/galgantar/miniconda3/envs/ada/bin/python",
+    "cursor.cpp.disabledLanguages": ["python", "jupyter"],
 }
