@@ -1,0 +1,385 @@
+
+LOADING FILES
+
+pd.read_json("data.jsonl.gz", lines=True)   # pandas automatically handles compression
+pd.read_json("data.json")
+pd.read_csv("data.csv.gz")
+pd.read_csv("data.tsv.gz", sep="\t") # for tsv files
+pd.read_excel('data/titanic.xls')
+
+
+GENERAL PANDAS 
+
+df.dtypes - get types
+
+new_df = pd.DataFrame(columns=['a', 'b', 'c']) # create df (probably better just list of jsons)
+
+my_df[len(my_df)] = ['gal', 11, 'student'] # add rows to df (if index is numeric - which it is by default)
+
+iloc - indexes using integer indexes, loc uses index (whatever type the index is)
+
+df.index.values 
+
+df = df.set_index('column_name')
+
+'print size' - means actually print df.size (not len)
+
+df_document = (
+    df_negotiations
+    .groupby(['negotiation_id', 'agent'])['message']
+    .apply(lambda messages: '\n'.join(messages))
+    .reset_index()
+    .rename(columns={'message': 'document'})
+)
+we can apply to aggregate all values of this field (you can also use this for custom aggregations eg geometric mean)
+
+when we call reset_index on groupby the old index - groups gets put into columns
+when we call reset_index on normal df the prev index - ints or whatever gets put into columns
+
+m = df['column'].quantile(0.1) and df['column'] < m to get top 10%
+
+use groupby.size() to just get counts (count ignores the nan values)
+
+if we iterate over df - we have to use iterrows, if we iterate over series we can do for s in series and for s in series.items() to also get index
+
+filter_g = df['name'].apply(lambda s: 'g' in s) - filtering on custom functon in pandas
+df[filter_g]
+
+pandas allows comparing floats 10.0 == 10 is True
+
+pd.concat([df1, series2], axis=1).fillna(0) - combine columns
+pd.concat([df1, df2], axis=0, ignore_index=True) - combine rows
+
+.isin(set)
+
+.isna(), .notna() - catches all nan/na values except strings eg 'None'
+
+country_features.sort_values('happiness_score', ascending=False)[['country', 'happiness_score']].head(10)
+.sort_index() - sorts index
+
+df.sample(n = 10, replace = False, weights = df['TotalPop'])        - sampling
+
+g = df.groupby('married').agg(      # most general aggregation
+    age_mean=('age','mean'),
+    age_sem=('age','max')
+)
+
+d = defaultdict(lambda: 0)
+
+.value_counts(), .describe() - get data about column quickly
+
+
+STATISTICS
+
+from scipy import stats
+corr, p_value = stats.pearsonr(df['age'], df['serum_creatinine'])
+corr, p_value = stats.spearmanr(df['IncomePerCap'],df['Employed'])
+
+from scipy import stats
+t_stat, p_value = stats.ttest_ind(A, B, equal_var=False) # which is bigger t_stat positive iff mean(A) > mean(B), H0: means equal
+contingency_table = pd.crosstab(        # crosstab to count all combinations
+    df_merged['gender'],
+    df_merged['success']
+)
+chi2stat, p_value, _, _ = stats.chi2_contingency(contingency_table) # chi2 tests if two CATEGORICAL variables are independent using contingency table - rows/columns don't matter use pd.crosstab, H0: variables independent - low p_val=not independent
+
+
+(not in requirements)
+from statsmodels.stats import diagnostic
+c, p_value = diagnostic.kstest_normal(df['IncomePerCap'].values, dist = 'norm') # is distribution normal (H0 = distribution is normal) - p = 0.0 -> distribution is not normal
+c, p_value = diagnostic.kstest_normal(df['IncomePerCap'].values, dist = 'exp') # is distribution exponential
+
+(not in requirements)
+from statsmodels.stats.proportion import binom_test
+binom_test(28, 100, 0.2, alternative='larger') # is distribution binomial (28 successes, 100 tries, 0.2 - expected probability of success/placebo) H0: p = 0.2, H1: p > 0.2
+
+
+CONFIDENCE INTERVALS
+
+SE = std/sqrt(n) - standard error of mean, .sem() in pandas
+
+interval = stats.bootstrap(
+    (x,),
+    np.mean,
+    confidence_level=0.95,
+    n_resamples=10_000,
+    method='percentile'
+)          
+interval.confidence_interval              # bootstrap resampling mean (also implemented as a function)
+
+def ci_half(x):
+    from scipy.stats import t
+    mean = np.mean(x)
+    se = np.std(x, ddof=1) / np.sqrt(len(x))
+    ci_low, ci_high = t.interval(0.95, df=len(x)-1, loc=mean, scale=se)   # simplest way to get confidence interval for given confidence
+    ci_half = ci_high - mean  # use ci_half for plotting
+    return ci_half
+
+
+PLOT MEANS WITH CONFIDENCE INTERVALS - SNS
+
+sns.barplot(
+    data=df,
+    x='group',
+    y='value',
+    ci=95,   # confidence level
+    hue='group'
+) # sns calculates mean 'value' for each group and confidence intervals automatically
+
+sns.lineplot(
+    data=df,
+    x='group',
+    y='value',
+    errorbar=('ci', 95)   # 95% confidence interval
+)   # sns calculates mean 'value' for each group and fill between
+
+sns.boxplot(data=df, x='group', y='value') # for boxplots
+
+
+
+PLOTTING MEANS WITH CONFIDENCE INTERVALS - MATPLOTLIB
+
+summary = (
+    df.groupby('group')['value']
+      .agg(mean='mean', sem='sem', ci_half=ci_half)
+)
+
+plt.errorbar(
+    summary.index,
+    summary['mean'],
+    yerr=summary['se'],   # or ci_half
+    fmt='o',
+    capsize=5
+)
+plt.bar(
+    summary.index,
+    summary['mean'],
+    yerr=summary['se'],   # or ci_half
+    capsize=5
+)
+
+plt.plot(summary.index, summary['mean'], label='Mean')
+plt.fill_between(
+    summary.index,
+    summary['mean'] - summary['se'], # or ci_half
+    summary['mean'] + summary['se'], # or ci_half
+    alpha=0.3,
+    label='± SE'
+)
+
+GENERAL STRATIFIED ANALYSIS
+
+means = df.groupby(['gender', 'employment_status', 'married']).agg(mean=('value', 'mean'), ci_half=('value', ci_half))
+plt.bar([str(t) for t in means.index], means['mean'], yerr=means['ci_half'])   
+
+males = means.loc[[i for i in means.index if i[0] == 'M']]
+females = means.loc[[i for i in means.index if i[0] == 'F']]
+x = np.arange(len(males))
+width = 0.35
+plt.bar(x - width/2, males['mean'], width, yerr=males['ci_half'], label='male')
+plt.bar(x + width/2, females['mean'], width, yerr=males['ci_half'], label='female')
+plt.xticks(x, ['male','female'])
+plt.legend()                            # plotting grouped barplot
+
+means.loc[('F', 'employed')] or means.loc['F'].loc['employed'] - multiindex
+
+group = lalonde_data.groupby(['treat', 'married'])['married'].count()
+group = group.unstack()                                         # put index at the first level into columns - columns will have names corresponding to values in index
+group = group.div(group.sum(axis=1), axis=0)                    # normalize columns
+pl = group.plot(kind='bar', figsize=[7,5], rot=0)               # plot nice barplot directly (first dim=index, second dim=all columns)
+
+
+PLOTTING
+
+fig, ax = plt.subplots(nrows=4, ncols=4, figsize=(12, 12))
+for i in range(4):
+    for j in range(4):
+        ax[i, j].plot(x, np.sin(x + i + j))
+        ax[i, j].set_title(f"Plot ({i},{j})")
+        ax[i, j].grid(True)
+fig.tight_layout()                  # using ax, fig
+
+plt.figure(figsize=(12, 12))
+for i in range(16):
+    plt.subplot(4, 4, i + 1)
+    plt.plot(x, np.sin(x + i))
+    plt.title(f"Plot {i+1}")
+    plt.grid(True)
+plt.tight_layout()
+plt.show()                  # using subplots (easier)
+
+
+use plt.bar(y, X, label='mean') and plt.legend
+
+sorted_data = np.sort(commune_pop["population_Dec"])
+cdf = np.arange(1, len(sorted_data)+1) / len(sorted_data)
+ccdf = 1 - cdf
+plt.figure(figsize=(7,5))
+plt.plot(sorted_data, ccdf)     # plot ccdf
+
+# for power law - just normal histogram with plt.xscale('log'), plt.yscale('log') (extra: bins=np.logspace(0, 6, 100))
+plt.hist(corpus_frequency['Frequency'].values, bins=np.logspace(0, 6, 100));
+plt.xscale('log')
+plt.yscale('log')
+
+plt.figure(figsize=(10, 10))
+for i in range(3):
+    plt.subplot(1, 3, i+1)
+    plt.plot(X[i, :].flatten(), label=i)
+    plt.title(f'this is plot {i}')
+    plt.legend()                        # plotting multiple plots
+
+
+ax.scatter(X[:,0], X[:,1], c=labels, alpha=0.6)
+
+
+data = [[1,2], [3,4]] plt.boxplot(X, labels=['a', 'b'])         # plotting two boxplots
+
+sns.heatmap(arr, annot=labels, cbar=True)
+
+
+PANDAS TEXT & REGEX
+
+df['text'] = df['text'].str.replace('|'.join(EXCLUDE_CHARS), ' ', regex=True)
+
+s = "abc_123"
+m = re.match(r'^([A-Za-z]+)[_/](\d+)$', s)
+text_part = m.group(1)      number_part = m.group(2) # groups - in parenthesis
+
+
+STATSMODELS
+
+import statsmodels.formula.api as smf
+mod = smf.ols(formula='time ~ C(high_blood_pressure) * C(DEATH_EVENT,  Treatment(reference=0)) + C(diabetes)', data=df)
+# --> C performs one hot encoding - if we want eye color: C(eye_color, Treatment(reference='blue')) this would make blue have all zeros
+# --> * operator adds a product (a:b) and each additional covariate itselt (+ a + b)
+
+res = mod.fit()
+res.summary()
+variables = res.params.index,  coefficients = res.params.values,   p_values = res.pvalues,   standard_errors = res.bse.values
+
+log transform: df['time_log'] = np.log(df['time'])
+
+
+MATCHING
+
+df['age'] = (df['age'] - df['age'].mean()) / df['age'].std()  - normalization
+
+import statsmodels.formula.api as smf
+mod = smf.logit(
+    formula='treat ~ age + educ + C(black) + C(hispan) + C(married) + C(nodegree) + re74 + re75',
+    data=df)
+res = mod.fit()
+df['Propensity_score'] = res.predict()
+print(res.summary())
+...
+matching = nx.max_weight_matching(G)
+
+
+PIVOT TABLES 
+
+df_contingency = pd.pivot_table(df_merged, index='gender', columns='success', values='age', aggfunc='count') # value doesn't matter since we count, just shouldn't be the same as columns
+df_contingency.iloc['male']['successful'] - to get counts
+
+# for stratified analysis:
+cont = pd.pivot_table(df, values='age', index='sex', columns=['group', 'married'], aggfunc=['mean', 'std'], fill_value=0) - index - the first value, columns - all other values
+
+EXERCISE 7
+
+df_one_hot = pd.get_dummies(df, columns=['sex', 'group']) - one hot encode given colums (returns new dataframe)
+
+df_new = train_categorical.drop('adopted', axis=1) - drop these columns
+
+
+
+SKLEARN 
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+vectorizer = TfidfVectorizer(max_features=150, stop_words='english')
+X1 = vectorizer.fit_transform(df2['TXT_PROCESSED']).toarray()           # put to array unless passing into TruncatedSVD
+vectorizer.get_feature_names_out()
+
+labels = KMeans.fit_predict(X), StandardScaler.fit(X), silhouette_score(X, labels), pca.fit_transform(X), labels = DBSCAN().fit_predict(X)
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X_lsa, y, test_size=0.3)
+
+col_means = np.nanmean(X, axis=0)
+inds = np.where(np.isnan(X))
+X[inds] = col_means[inds[1]]        # mean imputation
+
+precision = cross_val_score(logistic, X, y, cv=10, scoring='precision')
+y_pred = cross_val_predict(logistic, X, y, cv=10, method='predict_proba')  # prediction with other 9/10 of the dataset for each point, for logistic it calls model.predict_proba!
+fpr, tpr, _ = roc_curve(y, y_pred[:, 1])
+auc_score = auc(fpr, tpr)
+plt.plot(fpr, tpr)
+plt.plot([0, 1], [0, 1],'r--')
+
+
+NETWORKX
+
+degrees = G.degree(G.nodes())
+
+comp = list(nx.connected_components(quakerG))
+largest_comp = max(comp, key=len)
+
+nx.density(quakerG) - how many out of all possible edges are there
+nx.transitivity(quakerG) - how many of all existing triangles (triadic closure) exis
+nx.clustering(quakerG, [node1]) - how many out of all possible connections do neighbours of node1 have?
+nx.shortest_path, nx.diameter, nx.average_shortest_path_length
+
+for node in G.nodes(data=True), for e in G.edges(data=True, keys=True), ... # in multigraphs keys tell us index of multiedge betwenen pairs of nodes
+
+Gs = G.remove_nodes_from([n1, n2])
+Gs = G.subgraph([n1, n2, ...])
+Gs = G.edge_subgraph(relevant_edges) # when they ask about subgraph
+
+nx.katz_centrality(G), nx.betweenness_centrality(G), nx.pagerank(G), nx.closeness_centrality(G)
+betweenness_centrality = nx.betweenness_centrality(Gs)
+sorted_betweenness = sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)
+
+G = nx.from_pandas_edgelist(df, 'SRC', 'TGT', ['VOT', 'RES', 'YEA'], create_using=nx.DiGraph)
+
+for i 
+    for j
+        G.add_edge(i, j, w=11) 
+G.add_nodes_from(list_of_nodes)- careful, what about nodes without edges
+
+gender_dict = nx.get_edge_attributes(G, "gender")
+gender_dict[(u, v, k)]                      # multigraphs - edges have keys G.edges(keys=True)
+nx.set_edge_attrubutes(G, dict), nx.set_node_attributes(G, dict)
+
+G['gal']['vid'] or G.get_edge_data(u, v) - all edges between two nodes (can be slow!)
+
+G.predecesor(node), G.successor(node)
+
+NUMPY
+
+np.mean(A, axis=0) axis=0 means 'along the first axis - vertically'
+
+TfidfVectorizer returns csr sparse matrices use .toarray, 
+for dataframes use .to_numpy
+
+
+GENERAL NOTES
+
+if the dataset contains ids there is no guarantee that all of the ids (referred_episode_id) exist in the dataframe - check if the value we are using can be none
+
+store intermidiary results in dataframes not nested dicts, might be easier to work with
+
+\true or false\, \discuss\, ... require no coding
+
+95% confidence interval == 1.96*sem
+
+CCDF - just plot with uneven bins if there is log
+
+plt.axvline(10)
+plt.axhline(0.4) - if we want to check something on the plot
+
+res = df.apply(lambda row: row['title'] + row['subtitle'], axis=1) - call apply on entire dataframe
+
+create new G_reduced, df_merged, ... for every operation, careful which one you are using
+y = df2['VOT'].apply(lambda x: 1 if x == 1 else 0) - writing into dataframe is slow - just extract using .values and work with separate numpy for y_test, y (true y)
+roc_auc_score - can be computed without probabilities as well apparently
+
+"what fraction is hired by top N universities" - use cumsum and normalization
